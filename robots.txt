@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://hexcafe.vercel.app/sitemap.xml
