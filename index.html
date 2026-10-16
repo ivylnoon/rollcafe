@@ -125,12 +125,17 @@
     .gallery-track::-webkit-scrollbar { display: none; }
     .gallery-card { min-width: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.11); border-radius: 15px; background: #111114; scroll-snap-align: start; }
     .gallery-visual { height: clamp(245px, 40vw, 390px); display: grid; place-items: center; overflow: hidden; padding: 16px; background: #0e0e11; }
-    .gallery-visual img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 7px; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+    .gallery-visual img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 7px; box-shadow: 0 10px 30px rgba(0,0,0,.3); cursor: zoom-in; }
     .gallery-caption { padding: 11px 14px 13px; }
     .gallery-caption strong { color: #e8e8eb; font-size: 11px; font-weight: 650; }
     .gallery-dots { display: flex; justify-content: center; gap: 5px; margin-top: 5px; }
     .gallery-dot { width: 5px; height: 5px; padding: 0; border: 0; border-radius: 99px; background: #4c4c53; cursor: pointer; transition: width .16s ease, background .16s ease; }
     .gallery-dot.active { width: 17px; background: #dddde1; }
+    .gallery-lightbox { position: fixed; inset: 0; z-index: 100; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); place-items: center; border: 0; background: rgba(0,0,0,.96); color: white; }
+    .gallery-lightbox[open] { display: grid; }
+    .gallery-lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-out; }
+    .gallery-lightbox-close { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(25,25,28,.8); color: white; font-size: 24px; line-height: 1; cursor: pointer; }
+    .gallery-lightbox-close:hover { background: #303035; }
     .site-footer { margin-top: clamp(48px, 8vw, 82px); padding: 15px 0 calc(17px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,.1); color: #777780; font-size: 10px; }
     .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
     .footer-links { display: flex; align-items: center; gap: 15px; }
@@ -194,7 +199,7 @@
   <main id="main" class="page-wrap">
     <section class="hero" aria-labelledby="page-title">
       <h1 id="page-title">Hex Cafe</h1>
-      <p class="hero-copy">A color map made by the community.</p>
+      <p class="hero-copy">A color map made by the community.<br><br>Hex Cafe is a place for the Hex Roll discord bot, roll a random hex color every 2 hours, trade with others, climb leaderboards and have fun!</p>
     </section>
 
     <section id="map" class="map-section" aria-label="Hex Cafe color map">
@@ -291,7 +296,7 @@
           <button id="gallery-prev" class="gallery-arrow" type="button" aria-label="Previous screenshots">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m12.5 4.5-5.5 5.5 5.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <span id="gallery-count" class="gallery-count" aria-live="polite">01 / 07</span>
+          <span id="gallery-count" class="gallery-count" aria-live="polite">01 / 08</span>
           <button id="gallery-next" class="gallery-arrow" type="button" aria-label="Next screenshots">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -305,8 +310,13 @@
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/server-rules.png" alt="Server rules" loading="lazy" width="585" height="665"></div><figcaption class="gallery-caption"><strong>Server rules</strong></figcaption></figure>
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/streak-milestones.png" alt="Daily roll streak milestones" loading="lazy" width="522" height="277"></div><figcaption class="gallery-caption"><strong>Streaks</strong></figcaption></figure>
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/role-picker.png" alt="Role picker menu" loading="lazy" width="586" height="366"></div><figcaption class="gallery-caption"><strong>Role picker</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll.jpg" alt="Hex Roll screenshot showing lime color #09A504" loading="lazy" width="851" height="494"></div><figcaption class="gallery-caption"><strong>Hex roll</strong></figcaption></figure>
       </div>
       <div id="gallery-dots" class="gallery-dots" aria-label="Choose a screenshot"></div>
+      <dialog id="gallery-lightbox" class="gallery-lightbox" aria-label="Expanded screenshot">
+        <button class="gallery-lightbox-close" type="button" aria-label="Close expanded screenshot">&times;</button>
+        <img id="gallery-lightbox-image" alt="">
+      </dialog>
     </section>
   </main>
 
@@ -1021,7 +1031,45 @@
     const galleryTrack = $("gallery-track");
     const galleryCards = Array.from(galleryTrack.querySelectorAll(".gallery-card"));
     const galleryDots = $("gallery-dots");
+    const galleryLightbox = $("gallery-lightbox");
+    const galleryLightboxImage = $("gallery-lightbox-image");
     let galleryIndex = 0;
+    let galleryTrigger = null;
+    function closeGalleryLightbox() {
+      if (galleryLightbox.open) galleryLightbox.close();
+    }
+    galleryCards.forEach((card) => {
+      const image = card.querySelector("img");
+      image.tabIndex = 0;
+      image.setAttribute("role", "button");
+      image.setAttribute("aria-haspopup", "dialog");
+      image.setAttribute("aria-label", `Expand ${image.alt}`);
+      image.addEventListener("click", () => {
+        galleryTrigger = image;
+        galleryLightboxImage.src = image.currentSrc || image.src;
+        galleryLightboxImage.alt = image.alt;
+        galleryLightbox.showModal();
+        galleryLightbox.querySelector(".gallery-lightbox-close").focus();
+      });
+      image.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          image.click();
+        }
+      });
+    });
+    galleryLightbox.querySelector(".gallery-lightbox-close").addEventListener("click", closeGalleryLightbox);
+    galleryLightbox.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeGalleryLightbox();
+    });
+    galleryLightbox.addEventListener("click", (event) => {
+      if (event.target === galleryLightbox || event.target === galleryLightboxImage) closeGalleryLightbox();
+    });
+    galleryLightbox.addEventListener("close", () => {
+      if (galleryTrigger) galleryTrigger.focus();
+      galleryTrigger = null;
+    });
     galleryCards.forEach((card, index) => {
       const dot = document.createElement("button");
       dot.type = "button";
