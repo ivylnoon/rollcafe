@@ -6,27 +6,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#09090b">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Explore the Hex Cafe color map and join the Discord community.">
+  <meta name="description" content="Explore the Hex Roulette color map and join the Discord community.">
   <meta name="robots" content="index,follow,max-image-preview:large">
-  <link rel="canonical" href="https://hexcafe.vercel.app/">
+  <link rel="canonical" href="https://hexroulette.vercel.app/">
   <link rel="icon" type="image/png" href="assets/14.png">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Hex Cafe">
-  <meta property="og:title" content="Hex Cafe — Color Map">
-  <meta property="og:description" content="A community color map. Find Hex Cafe on Discord.">
-  <meta property="og:url" content="https://hexcafe.vercel.app/">
+  <meta property="og:site_name" content="Hex Roulette">
+  <meta property="og:title" content="Hex Roulette — Color Map">
+  <meta property="og:description" content="A community color map. Find Hex Roulette on Discord.">
+  <meta property="og:url" content="https://hexroulette.vercel.app/">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Hex Cafe — Color Map">
-  <meta name="twitter:description" content="Explore the Hex Cafe color map.">
-  <title>Hex Cafe | Color Map</title>
+  <meta name="twitter:title" content="Hex Roulette — Color Map">
+  <meta name="twitter:description" content="Explore the Hex Roulette color map.">
+  <title>Hex Roulette | Color Map</title>
   <script type="application/ld+json">
   {
     "@context":"https://schema.org",
     "@type":"WebSite",
-    "name":"Hex Cafe",
-    "url":"https://hexcafe.vercel.app/",
+    "name":"Hex Roulette",
+    "url":"https://hexroulette.vercel.app/",
     "description":"A community color map and Discord community.",
-    "publisher":{"@type":"Organization","name":"Hex Cafe","url":"https://hexcafe.vercel.app/"}
+    "publisher":{"@type":"Organization","name":"Hex Roulette","url":"https://hexroulette.vercel.app/"}
   }
   </script>
   <style>
@@ -198,11 +198,11 @@
 
   <main id="main" class="page-wrap">
     <section class="hero" aria-labelledby="page-title">
-      <h1 id="page-title">Hex Cafe</h1>
-      <p class="hero-copy">A color map made by the community.<br><br>Hex Cafe is a place for the Hex Roll discord bot, roll a random hex color every 2 hours, trade with others, climb leaderboards and have fun!</p>
+      <h1 id="page-title">Hex Roulette</h1>
+      <p class="hero-copy">A color map made by the community.<br><br>Hex Roulette is a place for the Hex Roll discord bot, roll a random hex color every 2 hours, trade with others, climb leaderboards and have fun!</p>
     </section>
 
-    <section id="map" class="map-section" aria-label="Hex Cafe color map">
+    <section id="map" class="map-section" aria-label="Hex Roulette color map">
       <div class="map-topbar">
         <span class="map-title">Color map</span>
         <label class="tier-control">
@@ -222,8 +222,8 @@
       </div>
 
       <div class="map-frame">
-        <div id="map-stage" class="map-stage" role="application" aria-label="Interactive Hex Cafe color map. Drag or swipe to move, use the wheel or pinch to zoom, and select a tile to inspect it." tabindex="0">
-          <canvas id="map-canvas" aria-label="Hex Cafe color map"></canvas>
+        <div id="map-stage" class="map-stage" role="application" aria-label="Interactive Hex Roulette color map. Drag or swipe to move, use the wheel or pinch to zoom, and select a tile to inspect it." tabindex="0">
+          <canvas id="map-canvas" aria-label="Hex Roulette color map"></canvas>
           <div id="map-loading" class="map-loading" aria-live="polite">Loading map…</div>
           <div id="map-focus" class="map-focus" hidden aria-hidden="true"></div>
           <div id="hover-card" class="hover-card" hidden aria-live="polite">
@@ -302,7 +302,7 @@
           </button>
         </div>
       </div>
-      <div id="gallery-track" class="gallery-track" tabindex="0" aria-label="Hex Cafe screenshots. Use the previous and next buttons to browse.">
+      <div id="gallery-track" class="gallery-track" tabindex="0" aria-label="Hex Roulette screenshots. Use the previous and next buttons to browse.">
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll.webp" alt="Hex Roll screenshot showing lime color #09A504" loading="lazy" width="851" height="494"></div><figcaption class="gallery-caption"><strong>Hex roll</strong></figcaption></figure>
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/bot-commands.webp" alt="Discord bot command examples" loading="lazy" width="595" height="404"></div><figcaption class="gallery-caption"><strong>Bot commands</strong></figcaption></figure>
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll-milestones.webp" alt="Color roll milestones" loading="lazy" width="527" height="360"></div><figcaption class="gallery-caption"><strong>Roll milestones</strong></figcaption></figure>
@@ -322,9 +322,9 @@
 
   <footer class="site-footer">
     <div class="page-wrap footer-inner">
-      <span>© Hex Cafe</span>
+      <span>© Hex Roulette</span>
       <nav class="footer-links" aria-label="Footer links">
-        <a href="https://hexcafe.vercel.app/">hexcafe.vercel.app</a>
+        <a href="https://hexroulette.vercel.app/">hexroulette.vercel.app</a>
         <a href="https://dc.gg/hc" target="_blank" rel="noopener noreferrer">dc.gg/hc</a>
       </nav>
     </div>
@@ -845,7 +845,7 @@
       try {
         await loadPagedArchive();
       } catch (error) {
-        console.warn("Hex Cafe paginated map could not start:", error);
+        console.warn("Hex Roulette paginated map could not start:", error);
         if (!gl && loadedCells === 0) {
           try {
             await loadLegacyArchive();
