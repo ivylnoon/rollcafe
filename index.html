@@ -72,7 +72,7 @@
       <div class="map-frame">
         <div id="map-stage" class="map-stage" role="application" aria-label="Interactive Hex Roulette color map. Drag or swipe to move, use the wheel or pinch to zoom, and select a tile to inspect it." tabindex="0">
           <img id="map-poster" class="map-poster" src="assets/map-preview.webp" alt="Colorful grid preview of the Hex Roulette map" width="700" height="700" loading="eager" decoding="async" fetchpriority="high">
-          <canvas id="map-canvas" aria-label="Hex Roulette color map"></canvas>
+          <div id="map-tiles" class="map-tile-layer" aria-hidden="true"></div>
           <div id="map-loading" class="map-loading" aria-live="polite">Loading map…</div>
           <div id="map-focus" class="map-focus" hidden aria-hidden="true"></div>
           <div id="hover-card" class="hover-card" hidden aria-live="polite">

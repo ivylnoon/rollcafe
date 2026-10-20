@@ -1,17 +1,14 @@
-const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/index.php";
+    const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/index.php";
     const PAGE_SIZE = 50000;
     const MAX_ZOOM = 18;
     const MIN_ZOOM = 1;
     const FALLBACK_LIMIT = 50000;
+    const MAX_MAP_CELLS = 1_000_000;
+    const MAX_RENDERED_TILES = 6000;
     const $ = (id) => document.getElementById(id);
     const stage = $("map-stage");
-    const canvas = $("map-canvas");
+    const mapTiles = $("map-tiles");
     const mapPoster = $("map-poster");
-    const mapPosterPainted = mapPoster.decode().then(() => new Promise((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
-    })).catch((error) => {
-      console.error("The map preview image could not be decoded:", error);
-    });
     const totalCountLabel = $("total-count");
     const archiveState = $("archive-state");
     const progressLabel = $("progress-label");
@@ -28,11 +25,6 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
     const tierFilter = $("tier-filter");
     const zoomLabel = $("zoom-value");
 
-    let gl = null;
-    let program = null;
-    let colorTexture = null;
-    let tierTexture = null;
-    let uniform = {};
     let gridSide = 1;
     let totalDrops = 0;
     let sampledCells = 0;
@@ -57,6 +49,7 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
     let dragged = false;
     let pinchStart = null;
     let suppressClick = false;
+    let renderTimer = 0;
     const activePointers = new Map();
 
     const tierName = (code) => code === 8 ? "Prime" : code > 0 ? `Tier ${code}` : "Color drop";
@@ -91,141 +84,20 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
       }
     }
 
-    function createShader(type, source) {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        const detail = gl.getShaderInfoLog(shader) || "Unknown WebGL shader error";
-        gl.deleteShader(shader);
-        throw new Error(detail);
-      }
-      return shader;
-    }
-
-    function initRenderer(total) {
-      gl = canvas.getContext("webgl2", { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: "high-performance" });
-      if (!gl) throw new Error("This browser cannot display the interactive map.");
-      const vertexSource = `#version 300 es
-        in vec2 a_position;
-        out vec2 v_uv;
-        void main() {
-          gl_Position = vec4(a_position, 0.0, 1.0);
-          v_uv = vec2(a_position.x * 0.5 + 0.5, 1.0 - (a_position.y * 0.5 + 0.5));
-        }`;
-      const fragmentSource = `#version 300 es
-        precision highp float;
-        precision highp int;
-        uniform sampler2D u_colors;
-        uniform sampler2D u_tiers;
-        uniform vec2 u_pan;
-        uniform float u_zoom;
-        uniform int u_side;
-        uniform int u_loaded;
-        uniform int u_tier_filter;
-        in vec2 v_uv;
-        out vec4 out_color;
-        void main() {
-          vec2 world_uv = (v_uv - u_pan) / u_zoom;
-          vec3 background = vec3(0.035, 0.035, 0.035);
-          if (world_uv.x < 0.0 || world_uv.y < 0.0 || world_uv.x >= 1.0 || world_uv.y >= 1.0) {
-            out_color = vec4(background, 1.0);
-            return;
-          }
-          ivec2 cell = ivec2(floor(world_uv * float(u_side)));
-          int index = cell.y * u_side + cell.x;
-          if (index >= u_loaded) {
-            out_color = vec4(background, 1.0);
-            return;
-          }
-          vec2 sample_uv = vec2((float(cell.x) + 0.5) / float(u_side), 1.0 - (float(cell.y) + 0.5) / float(u_side));
-          vec3 color = texture(u_colors, sample_uv).rgb;
-          int tier = int(texture(u_tiers, sample_uv).r * 255.0 + 0.5);
-          if (u_tier_filter > 0 && tier != u_tier_filter) color = mix(color, background, 0.93);
-          out_color = vec4(color, 1.0);
-        }`;
-      const vertex = createShader(gl.VERTEX_SHADER, vertexSource);
-      const fragment = createShader(gl.FRAGMENT_SHADER, fragmentSource);
-      program = gl.createProgram();
-      gl.attachShader(program, vertex);
-      gl.attachShader(program, fragment);
-      gl.linkProgram(program);
-      gl.deleteShader(vertex);
-      gl.deleteShader(fragment);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || "Could not link the map renderer.");
-      gl.useProgram(program);
-      const positions = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, positions);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-      const positionLocation = gl.getAttribLocation(program, "a_position");
-      gl.enableVertexAttribArray(positionLocation);
-      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-      const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    function initMapData(total) {
       const memory = Number(navigator.deviceMemory || 8);
-      const memoryCap = memory <= 4 ? 5_000_000 : 8_000_000;
-      const hardCap = Math.min(memoryCap, maxTexture * maxTexture);
-      sampleStride = total > hardCap ? Math.ceil(total / hardCap) : 1;
+      const maxCells = memory <= 4 ? 500_000 : MAX_MAP_CELLS;
+      sampleStride = total > maxCells ? Math.ceil(total / maxCells) : 1;
       sampledCells = total ? Math.ceil(total / sampleStride) : 0;
       gridSide = Math.max(1, Math.ceil(Math.sqrt(sampledCells)));
       colorsRGB = new Uint8Array(sampledCells * 3);
       tiersData = new Uint8Array(sampledCells);
       usernamesData = new Array(sampledCells);
-
-      colorTexture = gl.createTexture();
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, colorTexture);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gridSide, gridSide, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-
-      tierTexture = gl.createTexture();
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, tierTexture);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gridSide, gridSide, 0, gl.RED, gl.UNSIGNED_BYTE, null);
-
-      uniform = {
-        colors: gl.getUniformLocation(program, "u_colors"),
-        tiers: gl.getUniformLocation(program, "u_tiers"),
-        pan: gl.getUniformLocation(program, "u_pan"),
-        zoom: gl.getUniformLocation(program, "u_zoom"),
-        side: gl.getUniformLocation(program, "u_side"),
-        loaded: gl.getUniformLocation(program, "u_loaded"),
-        filter: gl.getUniformLocation(program, "u_tier_filter"),
-      };
-      gl.uniform1i(uniform.colors, 0);
-      gl.uniform1i(uniform.tiers, 1);
-      gl.uniform1i(uniform.side, gridSide);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      gl.clearColor(0.035, 0.035, 0.035, 1);
-      resizeCanvas();
-      drawMap();
+      drawMap(true);
       if (sampleStride > 1) {
-        setMessage(`Large map: showing a sampled view on this device.`);
+        setMessage("Large map: showing a sampled view on this device.");
       }
       updateProgress();
-    }
-
-    function resizeCanvas() {
-      if (!gl) return;
-      const rect = stage.getBoundingClientRect();
-      const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-      const width = Math.max(1, Math.round(rect.width * dpr));
-      const height = Math.max(1, Math.round(rect.height * dpr));
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      applyView();
     }
 
     function clampView() {
@@ -235,21 +107,55 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
       panY = Math.max(height * (1 - zoom), Math.min(0, panY));
     }
 
-    function drawMap() {
-      if (!gl || !program) return;
-      gl.useProgram(program);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, colorTexture);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, tierTexture);
-      gl.uniform2f(uniform.pan, panX / Math.max(1, stage.clientWidth), panY / Math.max(1, stage.clientHeight));
-      gl.uniform1f(uniform.zoom, zoom);
-      gl.uniform1i(uniform.loaded, loadedCells);
-      gl.uniform1i(uniform.filter, Number(tierFilter.value || 0));
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    function renderTiles() {
+      if (!loadedCells || !stage.clientWidth || !stage.clientHeight) return;
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      const cellWidth = width / gridSide;
+      const cellHeight = height / gridSide;
+      const left = Math.max(0, (-panX / zoom - width / zoom) / cellWidth);
+      const right = Math.min(gridSide, ((width - panX) / zoom + width / zoom) / cellWidth);
+      const top = Math.max(0, (-panY / zoom - height / zoom) / cellHeight);
+      const bottom = Math.min(gridSide, ((height - panY) / zoom + height / zoom) / cellHeight);
+      const visibleCells = Math.max(1, (right - left) * (bottom - top));
+      const stride = Math.max(1, Math.ceil(Math.sqrt(visibleCells / MAX_RENDERED_TILES)));
+      const firstColumn = Math.floor(left / stride) * stride;
+      const firstRow = Math.floor(top / stride) * stride;
+      const selectedTier = Number(tierFilter.value || 0);
+      const fragment = document.createDocumentFragment();
+
+      for (let row = firstRow; row < bottom; row += stride) {
+        for (let column = firstColumn; column < right; column += stride) {
+          const index = row * gridSide + column;
+          if (index >= loadedCells) continue;
+          const tile = document.createElement("div");
+          tile.className = "map-tile";
+          tile.style.left = `${column / gridSide * 100}%`;
+          tile.style.top = `${row / gridSide * 100}%`;
+          tile.style.width = `${Math.min(stride, gridSide - column) / gridSide * 100}%`;
+          tile.style.height = `${Math.min(stride, gridSide - row) / gridSide * 100}%`;
+          tile.style.backgroundColor = hexAt(index);
+          if (selectedTier && tierAt(index) !== selectedTier) tile.style.opacity = "0.07";
+          fragment.appendChild(tile);
+        }
+      }
+
+      mapTiles.replaceChildren(fragment);
+      stage.classList.toggle("has-map-data", loadedCells > 0);
+    }
+
+    function drawMap(immediate = false) {
+      const transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+      mapTiles.style.transform = transform;
+      mapPoster.style.transform = transform;
       zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
       updateFocusMarker();
+      window.clearTimeout(renderTimer);
+      if (immediate) {
+        renderTiles();
+      } else {
+        renderTimer = window.setTimeout(renderTiles, 100);
+      }
     }
 
     function applyView() {
@@ -274,48 +180,26 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
     }
 
     function uploadPage(items) {
-      if (!items.length || !gl) return;
+      if (!items.length) return;
       const count = Math.min(items.length, sampledCells - loadedCells);
       if (count <= 0) return;
-      const rgba = new Uint8Array(count * 4);
-      const tierPage = new Uint8Array(count);
       const firstIndex = loadedCells;
       for (let itemIndex = 0; itemIndex < count; itemIndex++) {
         const item = items[itemIndex];
         const hex = typeof item === "string" ? item.slice(0, 6) : String(item.hex || "000000").replace(/^#/, "").slice(0, 6);
         const tierCode = typeof item === "string" ? Number(item.slice(6, 7)) || 0 : (item.tier === "Prime" ? 8 : Number(String(item.tier || "").replace("Tier ", "")) || 0);
         const username = typeof item === "string" ? "" : String(item.username || "").trim();
-        const offset = itemIndex * 4;
         const rgbOffset = (firstIndex + itemIndex) * 3;
         const r = Number.parseInt(hex.slice(0, 2), 16) || 0;
         const g = Number.parseInt(hex.slice(2, 4), 16) || 0;
         const b = Number.parseInt(hex.slice(4, 6), 16) || 0;
-        rgba[offset] = r; rgba[offset + 1] = g; rgba[offset + 2] = b; rgba[offset + 3] = 255;
-        tierPage[itemIndex] = tierCode;
         colorsRGB[rgbOffset] = r; colorsRGB[rgbOffset + 1] = g; colorsRGB[rgbOffset + 2] = b;
         tiersData[firstIndex + itemIndex] = tierCode;
         usernamesData[firstIndex + itemIndex] = username || "Unknown user";
       }
 
-      let localOffset = 0;
-      while (localOffset < count) {
-        const absolute = firstIndex + localOffset;
-        const row = Math.floor(absolute / gridSide);
-        const column = absolute % gridSide;
-        const segment = Math.min(count - localOffset, gridSide - column);
-        const colorRun = rgba.subarray(localOffset * 4, (localOffset + segment) * 4);
-        const tierRun = tierPage.subarray(localOffset, localOffset + segment);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, colorTexture);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, column, gridSide - 1 - row, segment, 1, gl.RGBA, gl.UNSIGNED_BYTE, colorRun);
-        gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, tierTexture);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, column, gridSide - 1 - row, segment, 1, gl.RED, gl.UNSIGNED_BYTE, tierRun);
-        localOffset += segment;
-      }
       loadedCells += count;
-      drawMap();
-      mapPosterPainted.then(() => stage.classList.add("has-map-data"));
+      drawMap(true);
       updateProgress();
     }
 
@@ -474,7 +358,7 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
       if (!stats || stats.ok !== true || !Number.isFinite(Number(stats.total_count))) throw new Error(stats?.error || "Archive statistics are unavailable.");
       totalDrops = Math.max(0, Number(stats.total_count));
       totalCountLabel.textContent = `${number(totalDrops)} color ${totalDrops === 1 ? "drop" : "drops"}`;
-      initRenderer(totalDrops);
+      initMapData(totalDrops);
       cursor = "0";
       recordIndex = 0;
       hasMore = totalDrops > 0;
@@ -514,7 +398,7 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
       }
       totalDrops = data.length;
       totalCountLabel.textContent = `${number(totalDrops)} color ${totalDrops === 1 ? "drop" : "drops"}`;
-      initRenderer(totalDrops);
+      initMapData(totalDrops);
       uploadPage(data);
       hasMore = false;
       setStatus("Map loaded · legacy API");
@@ -578,9 +462,13 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
         else await document.exitFullscreen();
       } catch { setMessage("Fullscreen is not available in this browser."); }
     });
-    document.addEventListener("fullscreenchange", resizeCanvas);
-    window.addEventListener("resize", resizeCanvas, { passive: true });
-    if ("ResizeObserver" in window) new ResizeObserver(resizeCanvas).observe(stage);
+    function resizeMap() {
+      clampView();
+      drawMap(true);
+    }
+    document.addEventListener("fullscreenchange", resizeMap);
+    window.addEventListener("resize", resizeMap, { passive: true });
+    if ("ResizeObserver" in window) new ResizeObserver(resizeMap).observe(stage);
 
     $("find-hex").addEventListener("click", findExactHex);
     hexInput.addEventListener("keydown", (event) => { if (event.key === "Enter") findExactHex(); });
