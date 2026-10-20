@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="google-site-verification" content="nexilNJH9flvYume-zsB6z2JQmkIoxg1zMiig9xcnzE" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#09090b">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Explore the Hex Roulette color map and join the Discord community.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <link rel="canonical" href="https://hexroulette.vercel.app/">
+  <link rel="icon" type="image/png" href="assets/14.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Hex Roulette">
+  <meta property="og:title" content="Hex Roulette — Color Map">
+  <meta property="og:description" content="A community color map. Find Hex Roulette on Discord.">
+  <meta property="og:url" content="https://hexroulette.vercel.app/">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Hex Roulette — Color Map">
+  <meta name="twitter:description" content="Explore the Hex Roulette color map.">
+  <title>Hex Roulette | Color Map</title>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"WebSite",
+    "name":"Hex Roulette",
+    "url":"https://hexroulette.vercel.app/",
+    "description":"A community color map and Discord community.",
+    "publisher":{"@type":"Organization","name":"Hex Roulette","url":"https://hexroulette.vercel.app/"}
+  }
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <nav class="page-nav" aria-label="Main navigation">
+      <a href="#map">Map</a>
+      <a href="#gallery">Gallery</a>
+      <a class="join-button" href="https://dc.gg/hc" target="_blank" rel="noopener noreferrer">
+        Join <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 15 15 5M6 5h9v9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </nav>
+  </header>
+
+  <main id="main" class="page-wrap">
+    <section class="hero" aria-labelledby="page-title">
+      <h1 id="page-title">Hex Roulette</h1>
+      <p class="hero-copy">A color map made by the community.<br><br>Hex Roulette is a place for the Alice Discord bot to roll a random hex color every 2 hours, trade with others, climb leaderboards, and have fun!</p>
+    </section>
+
+    <section id="map" class="map-section" aria-label="Hex Roulette color map">
+      <div class="map-topbar">
+        <span class="map-title">Color map</span>
+        <label class="tier-control">
+          <span>Tier</span>
+          <select class="tier-filter" id="tier-filter" aria-label="Filter colors by tier">
+            <option value="0">All</option>
+            <option value="8">Prime</option>
+            <option value="1">Tier 1</option>
+            <option value="2">Tier 2</option>
+            <option value="3">Tier 3</option>
+            <option value="4">Tier 4</option>
+            <option value="5">Tier 5</option>
+            <option value="6">Tier 6</option>
+            <option value="7">Tier 7</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="map-frame">
+        <div id="map-stage" class="map-stage" role="application" aria-label="Interactive Hex Roulette color map. Drag or swipe to move, use the wheel or pinch to zoom, and select a tile to inspect it." tabindex="0">
+          <img class="map-poster" src="assets/map-preview.webp" alt="Colorful grid preview of the Hex Roulette map" width="700" height="700" fetchpriority="high">
+          <canvas id="map-canvas" aria-label="Hex Roulette color map"></canvas>
+          <div id="map-loading" class="map-loading" aria-live="polite">Loading map…</div>
+          <div id="map-focus" class="map-focus" hidden aria-hidden="true"></div>
+          <div id="hover-card" class="hover-card" hidden aria-live="polite">
+            <span id="hover-swatch" class="hover-swatch"></span>
+            <span><strong id="hover-hex">#------</strong><small id="hover-meta">Color</small></span>
+          </div>
+          <div class="stage-top-right">
+            <button id="pause-load" class="stage-icon-button pause-button" type="button" aria-label="Pause map loading" title="Pause loading" hidden></button>
+            <button id="fullscreen-map" class="stage-icon-button" type="button" aria-label="View map fullscreen" title="Fullscreen">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="stage-bottom-right" aria-label="Map zoom controls">
+            <button id="zoom-out" class="stage-icon-button" type="button" aria-label="Zoom out" title="Zoom out">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </button>
+            <span id="zoom-value" class="zoom-value" aria-live="polite">100%</span>
+            <button id="zoom-in" class="stage-icon-button" type="button" aria-label="Zoom in" title="Zoom in">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            </button>
+            <button id="fit-map" class="stage-icon-button" type="button" aria-label="Reset map view" title="Reset view">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 8V4h4m8 4V4h-4M4 12v4h4m8-4v4h-4M7 7l6 6m0-6-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div id="map-error" class="sr-only" role="alert"></div>
+        </div>
+
+        <div class="map-tools" aria-label="Color tools">
+          <label class="hex-search">
+            <span class="sr-only">Search an exact hex color</span>
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.7" cy="8.7" r="5.7" stroke="currentColor" stroke-width="1.5"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <input id="hex-input" type="text" maxlength="7" inputmode="text" autocomplete="off" spellcheck="false" placeholder="#17B29F" aria-describedby="hex-help">
+          </label>
+          <button id="find-hex" class="tool-button primary" type="button" aria-label="Find color">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4 10 4 4 8-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Find
+          </button>
+          <label class="color-tool" title="Choose a color">
+            <span class="sr-only">Choose a color</span>
+            <input id="color-picker" type="color" value="#17b29f" aria-label="Choose a color">
+          </label>
+          <button id="random-drop" class="tool-button" type="button" title="Jump to a random color">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 5h2.5c3.6 0 3.8 10 7.3 10H16m-3-3 3 3-3 3M4 15h2.5c1.1 0 1.9-1.2 2.6-2.7M13 2l3 3-3 3M4 5h2.5c1.1 0 1.9 1.2 2.6 2.7" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Random</span>
+          </button>
+          <button id="copy-hex" class="tool-button" type="button" aria-label="Copy selected hex color" title="Copy hex">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M12 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.4"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
+        <div class="map-help" id="hex-help">
+          <span>Drag to move · pinch or scroll to zoom</span>
+          <span id="selection-label">Tap a tile to inspect</span>
+        </div>
+        <div id="map-message" class="map-message" hidden></div>
+      </div>
+
+      <div class="sr-only" aria-live="polite">
+        <span id="total-count"></span><span id="archive-state">Preparing map</span>
+        <span id="progress-label"></span><span id="progress-percent"></span><span id="sample-label"></span>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <span id="map-mode-label">COLOR MAP</span>
+      </div>
+    </section>
+
+    <section id="gallery" class="gallery-section" aria-labelledby="gallery-title">
+      <div class="gallery-heading">
+        <h2 id="gallery-title">Screenshots</h2>
+        <div class="gallery-controls" aria-label="Screenshot gallery controls">
+          <button id="gallery-prev" class="gallery-arrow" type="button" aria-label="Previous screenshots">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m12.5 4.5-5.5 5.5 5.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span id="gallery-count" class="gallery-count" aria-live="polite">01 / 08</span>
+          <button id="gallery-next" class="gallery-arrow" type="button" aria-label="Next screenshots">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="gallery-track" class="gallery-track" tabindex="0" aria-label="Hex Roulette screenshots. Use the previous and next buttons to browse.">
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll.webp" srcset="assets/roll-480.webp 480w, assets/roll.webp 849w" sizes="(max-width: 700px) 85vw, 420px" alt="Hex Roll screenshot showing lime color #09A504" loading="lazy" decoding="async" width="849" height="480"></div><figcaption class="gallery-caption"><strong>Hex roll</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/bot-commands.webp" srcset="assets/bot-commands-480.webp 480w, assets/bot-commands.webp 595w" sizes="(max-width: 700px) 85vw, 420px" alt="Discord bot command examples" loading="lazy" decoding="async" width="595" height="404"></div><figcaption class="gallery-caption"><strong>Bot commands</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll-milestones.webp" alt="Color roll milestones" loading="lazy" width="527" height="360"></div><figcaption class="gallery-caption"><strong>Roll milestones</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/cafe-roles.webp" srcset="assets/cafe-roles-480.webp 480w, assets/cafe-roles.webp 584w" sizes="(max-width: 700px) 85vw, 420px" alt="Community role selection" loading="lazy" decoding="async" width="584" height="698"></div><figcaption class="gallery-caption"><strong>Cafe roles</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/reaction-roles.webp" srcset="assets/reaction-roles-480.webp 480w, assets/reaction-roles.webp 598w" sizes="(max-width: 700px) 85vw, 420px" alt="Reaction roles panel" loading="lazy" decoding="async" width="598" height="311"></div><figcaption class="gallery-caption"><strong>Reaction roles</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/server-rules.webp" srcset="assets/server-rules-480.webp 480w, assets/server-rules.webp 585w" sizes="(max-width: 700px) 85vw, 420px" alt="Server rules" loading="lazy" decoding="async" width="585" height="665"></div><figcaption class="gallery-caption"><strong>Server rules</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/streak-milestones.webp" alt="Daily roll streak milestones" loading="lazy" width="522" height="277"></div><figcaption class="gallery-caption"><strong>Streaks</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/role-picker.webp" srcset="assets/role-picker-480.webp 480w, assets/role-picker.webp 586w" sizes="(max-width: 700px) 85vw, 420px" alt="Role picker menu" loading="lazy" decoding="async" width="586" height="366"></div><figcaption class="gallery-caption"><strong>Role picker</strong></figcaption></figure>
+      </div>
+      <div id="gallery-dots" class="gallery-dots" aria-label="Choose a screenshot"></div>
+      <dialog id="gallery-lightbox" class="gallery-lightbox" aria-label="Expanded screenshot">
+        <button class="gallery-lightbox-close" type="button" aria-label="Close expanded screenshot">&times;</button>
+        <img id="gallery-lightbox-image" alt="">
+      </dialog>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="page-wrap footer-inner">
+      <span>© Hex Roulette</span>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="https://hexroulette.vercel.app/">hexroulette.vercel.app</a>
+        <a href="https://dc.gg/hc" target="_blank" rel="noopener noreferrer">dc.gg/hc</a>
+        <a href="terms-of-service/">Terms</a>
+        <a href="privacy-policy/">Privacy</a>
+      </nav>
+    </div>
+  </footer>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
