@@ -6,6 +6,12 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
     const $ = (id) => document.getElementById(id);
     const stage = $("map-stage");
     const canvas = $("map-canvas");
+    const mapPoster = $("map-poster");
+    const mapPosterPainted = mapPoster.decode().then(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    })).catch((error) => {
+      console.error("The map preview image could not be decoded:", error);
+    });
     const totalCountLabel = $("total-count");
     const archiveState = $("archive-state");
     const progressLabel = $("progress-label");
@@ -309,7 +315,7 @@ const API_BASE = "https://stalica.net/colorapi89167236746237642364872aBACcc/inde
       }
       loadedCells += count;
       drawMap();
-      stage.classList.add("has-map-data");
+      mapPosterPainted.then(() => stage.classList.add("has-map-data"));
       updateProgress();
     }
 
