@@ -35,6 +35,7 @@
     let usernamesData = [];
     let cursor = "0";
     let recordIndex = 0;
+    let archiveDropsForSearch = null;
     let hasMore = false;
     let isLoading = false;
     let isPaused = false;
@@ -388,14 +389,31 @@
     async function loadLegacyArchive() {
       sourceMode = "legacy";
       $("pause-load").hidden = true;
-      const data = await fetchJson(`${API_BASE}?action=drops`);
+      let data;
+      try {
+        data = await fetchJson(`${API_BASE}?action=drops`);
+      } catch (error) {
+        if (/413|too large|large for one response/i.test(String(error?.message || error))) {
+          sourceMode = "paged";
+          archiveDropsForSearch = null;
+          $("pause-load").hidden = false;
+          await loadPagedArchive();
+          updateArchiveSearchHint();
+          return;
+        }
+        throw error;
+      }
       if (!Array.isArray(data)) throw new Error(data?.error || "The archive needs the new paginated API. Update color-api/index.php, then retry.");
       if (data.length > FALLBACK_LIMIT) {
         sourceMode = "paged";
+        archiveDropsForSearch = null;
         $("pause-load").hidden = false;
         await loadPagedArchive();
+        updateArchiveSearchHint();
         return;
       }
+      archiveDropsForSearch = data;
+      updateArchiveSearchHint();
       totalDrops = data.length;
       totalCountLabel.textContent = `${number(totalDrops)} color ${totalDrops === 1 ? "drop" : "drops"}`;
       initMapData(totalDrops);
@@ -673,3 +691,588 @@
     } else {
       window.setTimeout(startArchive, 0);
     }
+
+
+    const primeColors = [
+      ["pureblack", "000000"], ["purewhite", "FFFFFF"], ["purered", "FF0000"], ["puregreen", "00FF00"], ["pureblue", "0000FF"],
+      ["yellow", "FFFF00"], ["violet", "EE82EE"], ["turquoise", "40E0D0"], ["teal", "008080"], ["silver", "C0C0C0"],
+      ["salmon", "FA8072"], ["ruby", "E0115F"], ["purple", "800080"], ["jade", "00A86B"], ["ivory", "FFFFF0"],
+      ["indigo", "4B0082"], ["pink", "FFC0CB"], ["orange", "FFA500"], ["olive", "808000"], ["navy", "000080"],
+      ["maroon", "800000"], ["magenta", "FF00FF"], ["lime", "32CD32"], ["lavender", "E6E6FA"], ["khaki", "F0E68C"],
+      ["gold", "FFD700"], ["cyan", "00FFFF"], ["crimson", "DC143C"], ["coral", "FF7F50"], ["cherryblossom", "FFB7C5"],
+      ["bronze", "CD7F32"], ["beige", "F5F5DC"], ["azure", "F0FFFF"], ["aquamarine", "7FFFD4"], ["amber", "FFBF00"],
+    ];
+    const tierBands = [[1, 2, 900], [3, 5, 240], [6, 9, 65], [10, 18, 25], [19, 35, 8], [36, 69, 2]];
+    const tierLabels = ["Prime", "Tier 1", "Tier 2", "Tier 3", "Tier 4", "Tier 5", "Tier 6", "Tier 7"];
+    const dropStoragePrefix = "hexroulette.drop.v1.";
+    const dropHistoryBatchSize = 100;
+    const searchBatchSize = 120;
+    const dropButton = $("drop-button");
+    const dropHexLabel = $("drop-hex");
+    const dropStatus = $("roll-status");
+    const autoSpinButton = $("auto-spin");
+    const statsToggle = $("roll-stats-toggle");
+    const statsPanel = $("roll-stats-panel");
+    const dropHistoryList = $("drop-history-list");
+    const searchInput = $("archive-search-input");
+    const searchForm = $("archive-search-form");
+    const searchStatus = $("archive-search-status");
+    const searchResults = $("archive-search-results");
+    let dropHistory = [];
+    let dropStats = { totalXP: 0, uniqueHexes: new Set(), tierCounts: {}, best: null };
+    let dropDuration = 2200;
+    let currentRollStartedAt = 0;
+    let currentRollDuration = 2200;
+    let isRolling = false;
+    let autoSpinEnabled = false;
+    let autoSpinTimer = 0;
+    let activeSearchMatches = [];
+    let renderedSearchCount = 0;
+    let renderedHistoryCount = 0;
+    let localStorageAvailable = true;
+
+    function randomHex() {
+      const bytes = new Uint32Array(1);
+      if (window.crypto?.getRandomValues) window.crypto.getRandomValues(bytes);
+      else bytes[0] = Math.floor(Math.random() * 0x1000000);
+      return (bytes[0] & 0xFFFFFF).toString(16).padStart(6, "0").toUpperCase();
+    }
+
+    function classifyDropHex(hex) {
+      const rgb = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+      let nearest = primeColors[0];
+      let bestSquared = Number.POSITIVE_INFINITY;
+      for (const prime of primeColors) {
+        const primeRgb = [0, 2, 4].map((offset) => Number.parseInt(prime[1].slice(offset, offset + 2), 16));
+        const squared = rgb.reduce((sum, value, index) => sum + (value - primeRgb[index]) ** 2, 0);
+        if (squared < bestSquared) { bestSquared = squared; nearest = prime; }
+      }
+      const distance = Math.floor(Math.sqrt(bestSquared) + 0.5);
+      if (distance === 0) return { tier: "Prime", distance, xp: 2400, nearest, rgb };
+      for (let index = 0; index < tierBands.length; index += 1) {
+        const [low, high, xp] = tierBands[index];
+        if (distance >= low && distance <= high) return { tier: `Tier ${index + 1}`, distance, xp, nearest, rgb };
+      }
+      return { tier: "Tier 7", distance, xp: 0.4, nearest, rgb };
+    }
+
+    function makeDropRecord(hex, rolledAt = Date.now()) {
+      const color = hex.toUpperCase();
+      const result = classifyDropHex(color);
+      return { hex: color, tier: result.tier, distance: result.distance, xp: result.xp, nearest: result.nearest, rgb: result.rgb, rolledAt };
+    }
+
+    function formatXP(value) {
+      return Number(value).toLocaleString("en-US", { maximumFractionDigits: 1 });
+    }
+
+    function loadLocalDrops() {
+      const loaded = [];
+      try {
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index);
+          if (!key?.startsWith(dropStoragePrefix)) continue;
+          const timeToken = key.slice(dropStoragePrefix.length).split(".")[0];
+          const rolledAt = Number.parseInt(timeToken, 36);
+          const hex = String(localStorage.getItem(key) || "").toUpperCase();
+          if (!Number.isFinite(rolledAt) || !/^[0-9A-F]{6}$/.test(hex)) continue;
+          loaded.push(makeDropRecord(hex, rolledAt));
+        }
+      } catch {
+        localStorageAvailable = false;
+      }
+      loaded.sort((first, second) => first.rolledAt - second.rolledAt);
+      return loaded;
+    }
+
+    function saveLocalDrop(record) {
+      try {
+        const key = `${dropStoragePrefix}${record.rolledAt.toString(36)}.${randomHex()}${randomHex()}`;
+        localStorage.setItem(key, record.hex);
+        localStorageAvailable = true;
+        return true;
+      } catch {
+        localStorageAvailable = false;
+        return false;
+      }
+    }
+
+    function calculateDropStats(records) {
+      const tierCounts = Object.fromEntries(tierLabels.map((tier) => [tier, 0]));
+      const uniqueHexes = new Set();
+      let totalXP = 0;
+      let best = null;
+      for (const record of records) {
+        totalXP += record.xp;
+        uniqueHexes.add(record.hex);
+        tierCounts[record.tier] = (tierCounts[record.tier] || 0) + 1;
+        if (!best || record.distance < best.distance) best = record;
+      }
+      return { totalXP: Number(totalXP.toFixed(1)), uniqueHexes, tierCounts, best };
+    }
+
+    function addDropToStats(record) {
+      dropStats.totalXP = Number((dropStats.totalXP + record.xp).toFixed(1));
+      dropStats.uniqueHexes.add(record.hex);
+      dropStats.tierCounts[record.tier] = (dropStats.tierCounts[record.tier] || 0) + 1;
+      if (!dropStats.best || record.distance < dropStats.best.distance) dropStats.best = record;
+    }
+
+    function setDropSwatch(hex, label = "Tap to roll", updateShadow = true) {
+      const color = `#${hex}`;
+      const rgb = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+      const luminance = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+      dropButton.style.setProperty("--swatch-color", color);
+      dropButton.style.setProperty("--swatch-ink", luminance > 0.58 ? "#101014" : "#FFFFFF");
+      if (updateShadow) dropButton.style.setProperty("--swatch-shadow", `rgba(${rgb.join(", ")}, .18)`);
+      dropButton.dataset.hex = hex;
+      dropHexLabel.textContent = color;
+      dropButton.querySelector("small").textContent = label;
+    }
+
+    function showDropColor(record) {
+      const result = typeof record === "string" ? makeDropRecord(record) : record;
+      setDropSwatch(result.hex);
+      $("roll-tier").textContent = result.tier;
+      $("roll-tier").classList.toggle("is-prime", result.tier === "Prime");
+      $("roll-prime").textContent = `${result.nearest[0]} · #${result.nearest[1]}`;
+      $("roll-distance").textContent = String(result.distance);
+      $("roll-rgb").textContent = result.rgb.join(", ");
+      $("roll-xp").textContent = `${formatXP(result.xp)} XP`;
+    }
+
+    function renderRecentDrops() {
+      const recentContainer = $("recent-drops");
+      const recent = dropHistory.slice(-6).reverse();
+      $("recent-drop-count").textContent = String(recent.length);
+      if (!recent.length) {
+        const empty = document.createElement("span");
+        empty.className = "recent-empty";
+        empty.textContent = "Your latest drops will appear here.";
+        recentContainer.replaceChildren(empty);
+        return;
+      }
+      const fragment = document.createDocumentFragment();
+      recent.forEach((record, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "recent-drop";
+        button.title = `#${record.hex} · ${record.tier} · show drop ${dropHistory.length - index}`;
+        button.setAttribute("aria-label", `Show ${record.tier} drop #${record.hex}`);
+        button.style.setProperty("--recent-color", `#${record.hex}`);
+        const swatch = document.createElement("i");
+        swatch.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.textContent = `#${record.hex}`;
+        button.append(swatch, label);
+        button.addEventListener("click", () => {
+          showDropColor(record);
+          dropStatus.textContent = `Showing ${record.tier} drop`;
+        });
+        fragment.appendChild(button);
+      });
+      recentContainer.replaceChildren(fragment);
+    }
+
+    function updateDropStats() {
+      const total = dropHistory.length;
+      $("drop-count").textContent = number(total);
+      $("stats-drop-count").textContent = `${number(total)} ${total === 1 ? "drop" : "drops"}`;
+      $("stats-total-drops").textContent = number(total);
+      $("stats-total-xp").textContent = `${formatXP(dropStats.totalXP)} XP`;
+      $("stats-unique-colors").textContent = number(dropStats.uniqueHexes.size);
+      $("stats-best-drop").textContent = dropStats.best ? `#${dropStats.best.hex} · ${dropStats.best.tier}` : "—";
+      $("stats-best-detail").textContent = dropStats.best ? `RGB ${dropStats.best.distance} · ${dropStats.best.nearest[0]}` : "—";
+      $("history-status").textContent = localStorageAvailable ? `${number(total)} drops saved here` : `${number(total)} drops · storage unavailable`;
+      const tierContainer = $("drop-tier-stats");
+      const fragment = document.createDocumentFragment();
+      tierLabels.forEach((tier, index) => {
+        const chip = document.createElement("span");
+        chip.className = "drop-tier-stat";
+        const label = document.createElement("span");
+        label.textContent = index === 0 ? "Prime" : `T${index}`;
+        const count = document.createElement("strong");
+        count.textContent = number(dropStats.tierCounts[tier] || 0);
+        chip.append(label, count);
+        fragment.appendChild(chip);
+      });
+      tierContainer.replaceChildren(fragment);
+    }
+
+    function makeHistoryRow(record) {
+      const row = document.createElement("article");
+      row.className = "history-item";
+      const swatch = document.createElement("span");
+      swatch.className = "history-swatch";
+      swatch.style.setProperty("--history-color", `#${record.hex}`);
+      swatch.setAttribute("aria-label", `Color #${record.hex}`);
+      const copy = document.createElement("div");
+      copy.className = "history-copy";
+      const title = document.createElement("strong");
+      title.textContent = `#${record.hex} · ${record.tier}`;
+      const detail = document.createElement("span");
+      detail.textContent = `${record.nearest[0]} · RGB ${record.distance} · ${formatXP(record.xp)} XP`;
+      const date = document.createElement("time");
+      date.className = "history-time";
+      date.dateTime = new Date(record.rolledAt).toISOString();
+      date.textContent = new Date(record.rolledAt).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+      copy.append(title, detail);
+      row.append(swatch, copy, date);
+      return row;
+    }
+
+    function renderDropHistory(reset = false) {
+      if (reset) {
+        renderedHistoryCount = 0;
+        dropHistoryList.replaceChildren();
+      }
+      if (!dropHistory.length) {
+        const empty = document.createElement("div");
+        empty.className = "history-empty";
+        empty.textContent = "No drops yet.";
+        dropHistoryList.replaceChildren(empty);
+        renderedHistoryCount = 0;
+        return;
+      }
+      const firstIndex = dropHistory.length - renderedHistoryCount - 1;
+      const count = Math.min(dropHistoryBatchSize, Math.max(0, dropHistory.length - renderedHistoryCount));
+      if (count <= 0) return;
+      const fragment = document.createDocumentFragment();
+      for (let offset = 0; offset < count; offset += 1) {
+        const recordIndex = firstIndex - offset;
+        if (recordIndex < 0) break;
+        fragment.appendChild(makeHistoryRow(dropHistory[recordIndex]));
+      }
+      dropHistoryList.appendChild(fragment);
+      renderedHistoryCount += count;
+    }
+
+    function recordDrop(hex) {
+      const record = makeDropRecord(hex);
+      dropHistory.push(record);
+      const stored = saveLocalDrop(record);
+      addDropToStats(record);
+      showDropColor(record);
+      dropStatus.textContent = `Drop ${number(dropHistory.length)} · ${record.tier}${stored ? "" : " · not saved"}`;
+      renderRecentDrops();
+      updateDropStats();
+      if (!statsPanel.hidden) renderDropHistory(true);
+    }
+
+    function finishDropRoll(hex) {
+      isRolling = false;
+      dropButton.classList.remove("is-rolling");
+      dropButton.disabled = false;
+      dropButton.setAttribute("aria-busy", "false");
+      recordDrop(hex);
+      if (autoSpinEnabled) autoSpinTimer = window.setTimeout(startDropRoll, 110);
+    }
+
+    function startDropRoll() {
+      if (isRolling) return;
+      window.clearTimeout(autoSpinTimer);
+      isRolling = true;
+      dropButton.disabled = true;
+      dropButton.setAttribute("aria-busy", "true");
+      dropButton.classList.add("is-rolling");
+      dropStatus.textContent = autoSpinEnabled ? "Auto spinning…" : "Rolling…";
+      const finalHex = randomHex();
+      currentRollStartedAt = performance.now();
+      currentRollDuration = dropDuration;
+      let lastFlash = 0;
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const animate = (now) => {
+        if (!isRolling) return;
+        if (now - currentRollStartedAt >= currentRollDuration) { finishDropRoll(finalHex); return; }
+        const flashInterval = reducedMotion ? 170 : 52;
+        if (now - lastFlash > flashInterval) {
+          setDropSwatch(randomHex(), "Rolling…", false);
+          lastFlash = now;
+        }
+        window.requestAnimationFrame(animate);
+      };
+      window.requestAnimationFrame(animate);
+    }
+
+    function setDropDuration(nextDuration) {
+      if (nextDuration !== 2200 && nextDuration !== 700) return;
+      const now = performance.now();
+      if (isRolling) {
+        const progress = Math.min(0.999, Math.max(0, (now - currentRollStartedAt) / currentRollDuration));
+        currentRollDuration = nextDuration;
+        currentRollStartedAt = now - progress * currentRollDuration;
+      }
+      dropDuration = nextDuration;
+    }
+
+    function updateAutoSpinButton() {
+      autoSpinButton.setAttribute("aria-pressed", String(autoSpinEnabled));
+      autoSpinButton.querySelector("span").textContent = autoSpinEnabled ? "Stop auto spin" : "Start auto spin";
+    }
+
+    document.querySelectorAll(".speed-option").forEach((button) => {
+      button.addEventListener("click", () => {
+        const nextDuration = Number(button.getAttribute("data-roll-duration"));
+        if (nextDuration !== 2200 && nextDuration !== 700) return;
+        setDropDuration(nextDuration);
+        document.querySelectorAll(".speed-option").forEach((option) => {
+          const selected = option === button;
+          option.classList.toggle("active", selected);
+          option.setAttribute("aria-pressed", String(selected));
+        });
+      });
+    });
+    dropButton.addEventListener("click", startDropRoll);
+    autoSpinButton.addEventListener("click", () => {
+      autoSpinEnabled = !autoSpinEnabled;
+      updateAutoSpinButton();
+      if (autoSpinEnabled && !isRolling) startDropRoll();
+      else if (!autoSpinEnabled) {
+        window.clearTimeout(autoSpinTimer);
+        dropStatus.textContent = isRolling ? "Finishing this drop…" : "Auto spin stopped";
+      }
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && autoSpinEnabled) {
+        autoSpinEnabled = false;
+        window.clearTimeout(autoSpinTimer);
+        updateAutoSpinButton();
+        dropStatus.textContent = isRolling ? "Finishing this drop…" : "Auto spin paused";
+      }
+    });
+
+    function renderPrimeReference() {
+      const container = $("prime-swatches");
+      const fragment = document.createDocumentFragment();
+      for (const [name, hex] of primeColors) {
+        const chip = document.createElement("div");
+        chip.className = "prime-chip";
+        chip.title = `${name} · #${hex}`;
+        const swatch = document.createElement("i");
+        swatch.style.setProperty("--prime-color", `#${hex}`);
+        swatch.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.textContent = name;
+        chip.append(swatch, label);
+        fragment.appendChild(chip);
+      }
+      container.replaceChildren(fragment);
+    }
+
+    dropHistory = loadLocalDrops();
+    dropStats = calculateDropStats(dropHistory);
+    renderPrimeReference();
+    updateDropStats();
+    renderRecentDrops();
+    if (dropHistory.length) {
+      const lastDrop = dropHistory[dropHistory.length - 1];
+      showDropColor(lastDrop);
+      dropStatus.textContent = `Last drop · ${lastDrop.tier}`;
+    } else {
+      showDropColor("17B29F");
+    }
+    statsToggle.addEventListener("click", () => {
+      const opening = statsPanel.hidden;
+      statsPanel.hidden = !opening;
+      statsToggle.setAttribute("aria-expanded", String(opening));
+      if (opening) renderDropHistory(true);
+    });
+    dropHistoryList.addEventListener("scroll", () => {
+      if (dropHistoryList.scrollTop + dropHistoryList.clientHeight >= dropHistoryList.scrollHeight - 80) {
+        renderDropHistory();
+      }
+    }, { passive: true });
+
+    function updateArchiveSearchHint() {
+      if (Array.isArray(archiveDropsForSearch)) {
+        searchStatus.classList.remove("error");
+        searchStatus.textContent = `${number(archiveDropsForSearch.length)} archived drops ready to search.`;
+      } else if (loadedCells > 0) {
+        searchStatus.classList.remove("error");
+        searchStatus.textContent = "Map loaded in compact mode. Username records may not be available.";
+      } else {
+        searchStatus.textContent = "Connecting to the color archive…";
+      }
+    }
+
+    function exactSearchHex(value) {
+      const match = String(value || "").trim().match(/^#?([0-9a-f]{6})$/i);
+      return match ? match[1].toUpperCase() : null;
+    }
+
+    function cssColorSearchHex(value) {
+      const query = String(value || "").replace(/^color\s*:\s*/i, "").trim();
+      if (!query || !window.CSS?.supports?.("color", query)) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = 1; canvas.height = 1;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return null;
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = query;
+      context.fillRect(0, 0, 1, 1);
+      const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
+      if (!alpha) return null;
+      return [red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("").toUpperCase();
+    }
+
+    function formatArchiveDate(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    }
+
+    function archiveRecordFromDrop(drop, index) {
+      if (!drop || typeof drop !== "object") return null;
+      const hex = String(drop.hex || "").replace(/^#/, "").toUpperCase();
+      if (!/^[0-9A-F]{6}$/.test(hex)) return null;
+      return { hex, tier: String(drop.tier || "Color drop"), username: String(drop.username || "Unknown user"), rolledAt: String(drop.rolled_at || ""), index: index + 1 };
+    }
+
+    function archiveColorMatches(hex) {
+      if (Array.isArray(archiveDropsForSearch)) {
+        return archiveDropsForSearch.map((drop, index) => archiveRecordFromDrop(drop, index)).filter((record) => record && record.hex === hex);
+      }
+      const matches = [];
+      for (let index = 0; index < loadedCells; index += 1) {
+        if (hexAt(index) !== `#${hex}`) continue;
+        matches.push({ hex, tier: tierName(tierAt(index)), username: usernamesData[index] || "Unknown user", rolledAt: "", index: index + 1 });
+      }
+      return matches;
+    }
+
+    function renderSearchResult(record) {
+      const row = document.createElement("article");
+      row.className = "search-result";
+      const swatch = document.createElement("span");
+      swatch.className = "search-result-swatch";
+      swatch.style.setProperty("--result-color", `#${record.hex}`);
+      swatch.setAttribute("aria-label", `Color #${record.hex}`);
+      const copy = document.createElement("div");
+      copy.className = "search-result-copy";
+      const title = document.createElement("strong");
+      title.textContent = `${record.username} · #${record.hex}`;
+      const meta = document.createElement("span");
+      const dateText = formatArchiveDate(record.rolledAt);
+      meta.textContent = `${record.tier}${dateText ? ` · ${dateText}` : ""} · drop ${number(record.index)}`;
+      const tier = document.createElement("span");
+      tier.className = `search-result-tier${record.tier === "Prime" ? " is-prime" : ""}`;
+      tier.textContent = record.tier;
+      copy.append(title, meta);
+      row.append(swatch, copy, tier);
+      return row;
+    }
+
+    function renderSearchBatch() {
+      const oldNote = searchResults.querySelector(".search-load-note");
+      oldNote?.remove();
+      const end = Math.min(renderedSearchCount + searchBatchSize, activeSearchMatches.length);
+      const fragment = document.createDocumentFragment();
+      for (let index = renderedSearchCount; index < end; index += 1) {
+        fragment.appendChild(renderSearchResult(activeSearchMatches[index]));
+      }
+      searchResults.appendChild(fragment);
+      renderedSearchCount = end;
+      if (renderedSearchCount < activeSearchMatches.length) {
+        const note = document.createElement("div");
+        note.className = "search-load-note";
+        note.textContent = `${number(renderedSearchCount)} of ${number(activeSearchMatches.length)} drops · scroll for more`;
+        searchResults.appendChild(note);
+      }
+    }
+
+    function appendSearchResults(matches, description, isPartial = false) {
+      searchResults.replaceChildren();
+      activeSearchMatches = matches.slice().reverse();
+      renderedSearchCount = 0;
+      if (!activeSearchMatches.length) {
+        const empty = document.createElement("div");
+        empty.className = "search-empty";
+        empty.textContent = "No matching archived records found.";
+        searchResults.appendChild(empty);
+        searchStatus.textContent = `${description}${isPartial ? " The archive is still loading or sampled; try again later for a fuller result." : ""}`;
+        searchStatus.classList.remove("error");
+        return;
+      }
+      renderSearchBatch();
+      searchStatus.textContent = `${description}${isPartial ? " Results include only loaded or sampled map entries." : ""}`;
+      searchStatus.classList.remove("error");
+    }
+
+    function searchArchive(event) {
+      event?.preventDefault();
+      const query = searchInput.value.trim();
+      searchResults.replaceChildren();
+      activeSearchMatches = [];
+      renderedSearchCount = 0;
+      if (!query) {
+        searchStatus.textContent = "Type a username, hex value, or CSS color name.";
+        searchStatus.classList.remove("error");
+        searchInput.focus();
+        return;
+      }
+      const hex = exactSearchHex(query);
+      const explicitCssColor = /^color\s*:/i.test(query);
+      if (hex || explicitCssColor) {
+        const colorHex = hex || cssColorSearchHex(query);
+        if (!colorHex) {
+          searchStatus.textContent = "That color name isn't recognized. Try a CSS color name or #RRGGBB.";
+          searchStatus.classList.add("error");
+          return;
+        }
+        if (!Array.isArray(archiveDropsForSearch) && loadedCells === 0) {
+          searchStatus.textContent = "The archive is still loading or unavailable. Try this color again shortly.";
+          searchStatus.classList.remove("error");
+          return;
+        }
+        const matches = archiveColorMatches(colorHex);
+        const partial = !Array.isArray(archiveDropsForSearch) && (hasMore || loadedCells < sampledCells || sampleStride > 1);
+        appendSearchResults(matches, `#${colorHex} · ${number(matches.length)} archived match${matches.length === 1 ? "" : "es"}.`, partial);
+        return;
+      }
+      if (/^\d{15,22}$/.test(query)) {
+        searchStatus.textContent = "Discord IDs aren't stored in the public color archive. Search by the user's Discord username instead.";
+        searchStatus.classList.add("error");
+        return;
+      }
+      const usernameQuery = query.replace(/^@/, "").toLocaleLowerCase();
+      if (Array.isArray(archiveDropsForSearch)) {
+        const matches = [];
+        archiveDropsForSearch.forEach((drop, index) => {
+          const record = archiveRecordFromDrop(drop, index);
+          if (record && record.username.toLocaleLowerCase().includes(usernameQuery)) matches.push(record);
+        });
+        if (matches.length) {
+          appendSearchResults(matches, `${number(matches.length)} color drop${matches.length === 1 ? "" : "s"} for “${query}”.`);
+          return;
+        }
+        const namedHex = cssColorSearchHex(query);
+        if (namedHex) {
+          const colorMatches = archiveColorMatches(namedHex);
+          appendSearchResults(colorMatches, `Color name ${query} resolves to #${namedHex} · ${number(colorMatches.length)} archived match${colorMatches.length === 1 ? "" : "es"}.`);
+          return;
+        }
+        appendSearchResults([], `No archived drops matched “${query}”.`);
+        return;
+      }
+      const namedHex = cssColorSearchHex(query);
+      if (namedHex && loadedCells) {
+        const matches = archiveColorMatches(namedHex);
+        const partial = hasMore || loadedCells < sampledCells || sampleStride > 1;
+        appendSearchResults(matches, `${query} resolves to #${namedHex} · ${number(matches.length)} loaded match${matches.length === 1 ? "" : "es"}.`, partial);
+        return;
+      }
+      if (!loadedCells) {
+        searchStatus.textContent = "The archive is still loading or unavailable. Try again shortly.";
+        searchStatus.classList.remove("error");
+      } else {
+        searchStatus.textContent = "Username search needs the archive's username records. Try an exact #HEX value instead.";
+        searchStatus.classList.add("error");
+      }
+    }
+
+    searchForm.addEventListener("submit", searchArchive);
+    searchInput.addEventListener("input", () => searchStatus.classList.remove("error"));
+    searchResults.addEventListener("scroll", () => {
+      if (searchResults.scrollTop + searchResults.clientHeight >= searchResults.scrollHeight - 72) renderSearchBatch();
+    }, { passive: true });
+    updateArchiveSearchHint();

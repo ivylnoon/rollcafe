@@ -9,7 +9,7 @@
   <meta name="description" content="Explore the Hex Roulette color map and join the Discord community.">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <link rel="canonical" href="https://hexroulette.vercel.app/">
-  <link rel="icon" type="image/png" href="assets/14.png">
+  <link rel="icon" type="image/webp" href="assets/alice-avatar.webp">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Hex Roulette">
   <meta property="og:title" content="Hex Roulette — Color Map">
@@ -19,7 +19,7 @@
   <meta name="twitter:title" content="Hex Roulette — Color Map">
   <meta name="twitter:description" content="Explore the Hex Roulette color map.">
   <title>Hex Roulette | Color Map</title>
-  <link rel="preload" as="image" href="assets/map-preview.webp" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/map-cover.webp" fetchpriority="high">
   <script type="application/ld+json">
   {
     "@context":"https://schema.org",
@@ -37,6 +37,8 @@
   <header class="site-header">
     <nav class="page-nav" aria-label="Main navigation">
       <a href="#map">Map</a>
+      <a href="#roll">Roll</a>
+      <a href="#search">Search</a>
       <a href="#gallery">Gallery</a>
       <a class="join-button" href="https://dc.gg/hc" target="_blank" rel="noopener noreferrer">
         Join <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 15 15 5M6 5h9v9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -49,6 +51,7 @@
       <h1 id="page-title">Hex Roulette</h1>
       <p class="hero-copy">A color map made by the community.<br><br>Hex Roulette is a place for the Alice Discord bot to roll a random hex color every 2 hours, trade with others, climb leaderboards, and have fun!</p>
     </section>
+
 
     <section id="map" class="map-section" aria-label="Hex Roulette color map">
       <div class="map-topbar">
@@ -71,7 +74,7 @@
 
       <div class="map-frame">
         <div id="map-stage" class="map-stage" role="application" aria-label="Interactive Hex Roulette color map. Drag or swipe to move, use the wheel or pinch to zoom, and select a tile to inspect it." tabindex="0">
-          <img id="map-poster" class="map-poster" src="assets/map-preview.webp" alt="Colorful grid preview of the Hex Roulette map" width="700" height="700" loading="eager" decoding="async" fetchpriority="high">
+          <img id="map-poster" class="map-poster" src="assets/map-cover.webp" alt="Color mosaic for the Hex Roulette color map" width="700" height="700" loading="eager" decoding="async" fetchpriority="high">
           <div id="map-tiles" class="map-tile-layer" aria-hidden="true"></div>
           <div id="map-loading" class="map-loading" aria-live="polite">Loading map…</div>
           <div id="map-focus" class="map-focus" hidden aria-hidden="true"></div>
@@ -138,6 +141,103 @@
       </div>
     </section>
 
+    <div class="feature-grid" aria-label="Color features">
+      <section id="roll" class="feature-card roll-card" aria-labelledby="roll-title">
+        <div class="feature-heading">
+          <div>
+            <span class="feature-kicker">DROP STUDIO</span>
+            <h2 id="roll-title">Roll a color</h2>
+            <p>Tap the color to roll. Your drop history is saved on this device.</p>
+          </div>
+          <span class="drop-storage-badge">Local history</span>
+        </div>
+        <div class="roll-stage" aria-label="Sixteen by nine color drop area">
+          <span class="roll-stage-mark">HEX ROULETTE <i>·</i> DROP</span>
+          <button id="drop-button" class="roll-swatch-button" type="button" aria-label="Roll a color drop" aria-busy="false">
+            <span id="drop-hex">#17B29F</span>
+            <small>Tap to roll</small>
+          </button>
+          <span id="roll-status" class="roll-stage-caption" aria-live="polite">Tap the color to roll</span>
+        </div>
+        <div class="roll-controls">
+          <div class="speed-switch" role="group" aria-label="Roll animation speed">
+            <button type="button" class="speed-option active" data-roll-duration="2200" aria-pressed="true">Normal <small>2.2s</small></button>
+            <button type="button" class="speed-option" data-roll-duration="700" aria-pressed="false">Fast <small>0.7s</small></button>
+          </div>
+          <button id="auto-spin" class="auto-spin-button" type="button" aria-pressed="false">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10a6 6 0 1 0 1.8-4.3M4 4v4h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Start auto spin</span>
+          </button>
+          <div class="drop-count"><span>TOTAL DROPS</span><strong id="drop-count">0</strong></div>
+        </div>
+        <div class="roll-details" aria-live="polite">
+          <div class="roll-result-heading">
+            <span id="roll-tier" class="roll-tier-pill">Ready to roll</span>
+          </div>
+          <div class="roll-info-grid">
+            <div><span>Nearest Prime</span><strong id="roll-prime">—</strong></div>
+            <div><span>RGB distance</span><strong id="roll-distance">—</strong></div>
+            <div><span>RGB values</span><strong id="roll-rgb">—</strong></div>
+            <div><span>XP value</span><strong id="roll-xp">—</strong></div>
+          </div>
+        </div>
+        <div class="recent-drops-wrap">
+          <div class="recent-heading"><strong>Recent drops</strong><span id="recent-drop-count">0</span></div>
+          <div id="recent-drops" class="recent-drops" aria-label="Recent color drops">
+            <span class="recent-empty">Your latest drops will appear here.</span>
+          </div>
+        </div>
+        <div class="roll-stats-actions">
+          <button id="roll-stats-toggle" class="roll-stats-toggle" type="button" aria-expanded="false" aria-controls="roll-stats-panel">
+            <span>Stats &amp; history</span><span id="stats-drop-count">0 drops</span>
+          </button>
+        </div>
+        <section id="roll-stats-panel" class="roll-stats-panel" aria-label="Drop statistics and history" hidden>
+          <div class="roll-stats-grid">
+            <div class="roll-stat"><span>Total drops</span><strong id="stats-total-drops">0</strong></div>
+            <div class="roll-stat"><span>Total XP value</span><strong id="stats-total-xp">0</strong></div>
+            <div class="roll-stat"><span>Unique colors</span><strong id="stats-unique-colors">0</strong></div>
+            <div class="roll-stat"><span>Best drop</span><strong id="stats-best-drop">—</strong><small id="stats-best-detail">—</small></div>
+          </div>
+          <div id="drop-tier-stats" class="drop-tier-stats" aria-label="Drops by tier"></div>
+          <div class="history-heading"><strong>All drops</strong><span id="history-status">Saved on this device</span></div>
+          <div id="drop-history-list" class="drop-history-list" tabindex="0" aria-label="Saved color drop history">
+            <div class="history-empty">No drops yet.</div>
+          </div>
+        </section>
+        <details class="scale-reference">
+          <summary>Prime colors and tier scale</summary>
+          <div class="tier-legend">
+            <span><b>Prime</b> · 0</span><span><b>Tier 1</b> · 1–2</span><span><b>Tier 2</b> · 3–5</span>
+            <span><b>Tier 3</b> · 6–9</span><span><b>Tier 4</b> · 10–18</span><span><b>Tier 5</b> · 19–35</span>
+            <span><b>Tier 6</b> · 36–69</span><span><b>Tier 7</b> · 70+</span>
+          </div>
+          <div id="prime-swatches" class="prime-swatches" aria-label="The 35 Prime colors"></div>
+        </details>
+      </section>
+
+      <section id="search" class="feature-card search-card" aria-labelledby="search-title">
+        <div class="feature-heading search-heading">
+          <div>
+            <span class="feature-kicker">PUBLIC COLOR ARCHIVE</span>
+            <h2 id="search-title">Find a user or color</h2>
+            <p>Look up saved drops by Discord username, hex value, or CSS color name.</p>
+          </div>
+          <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.7" cy="8.7" r="5.7" stroke="currentColor" stroke-width="1.5"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+        </div>
+        <form id="archive-search-form" class="archive-search-form">
+          <label class="sr-only" for="archive-search-input">Discord username or color</label>
+          <input id="archive-search-input" type="search" maxlength="128" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Username, #HEX, or color:blue">
+          <button class="tool-button primary" type="submit">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.7" cy="8.7" r="5.7" stroke="currentColor" stroke-width="1.5"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Search
+          </button>
+        </form>
+        <div id="archive-search-status" class="search-status" aria-live="polite">Connecting to the color archive…</div>
+        <div id="archive-search-results" class="search-results" aria-live="polite"></div>
+      </section>
+    </div>
+
     <section id="gallery" class="gallery-section" aria-labelledby="gallery-title">
       <div class="gallery-heading">
         <h2 id="gallery-title">Screenshots</h2>
@@ -152,7 +252,7 @@
         </div>
       </div>
       <div id="gallery-track" class="gallery-track" tabindex="0" aria-label="Hex Roulette screenshots. Use the previous and next buttons to browse.">
-        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll.webp" srcset="assets/roll-480.webp 480w, assets/roll.webp 849w" sizes="(max-width: 700px) 85vw, 420px" alt="Hex Roll screenshot showing lime color #09A504" loading="lazy" decoding="async" width="849" height="480"></div><figcaption class="gallery-caption"><strong>Hex roll</strong></figcaption></figure>
+        <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll.webp" srcset="assets/roll-480.webp 480w, assets/roll.webp 849w" sizes="(max-width: 700px) 85vw, 420px" alt="Hex roll showing #17B29F, Tier 6, nearest Prime jade" loading="lazy" decoding="async" width="849" height="480"></div><figcaption class="gallery-caption"><strong>Hex roll</strong></figcaption></figure>
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/bot-commands.webp" srcset="assets/bot-commands-480.webp 480w, assets/bot-commands.webp 595w" sizes="(max-width: 700px) 85vw, 420px" alt="Discord bot command examples" loading="lazy" decoding="async" width="595" height="404"></div><figcaption class="gallery-caption"><strong>Bot commands</strong></figcaption></figure>
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/roll-milestones.webp" alt="Color roll milestones" loading="lazy" width="527" height="360"></div><figcaption class="gallery-caption"><strong>Roll milestones</strong></figcaption></figure>
         <figure class="gallery-card"><div class="gallery-visual"><img src="assets/cafe-roles.webp" srcset="assets/cafe-roles-480.webp 480w, assets/cafe-roles.webp 584w" sizes="(max-width: 700px) 85vw, 420px" alt="Community role selection" loading="lazy" decoding="async" width="584" height="698"></div><figcaption class="gallery-caption"><strong>Cafe roles</strong></figcaption></figure>
